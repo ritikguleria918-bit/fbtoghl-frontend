@@ -7,13 +7,9 @@ import {
 import FBAccountModal from "../components/FBAccountModal";
 import FBUploadModal from "../components/FBUploadModal";
 import { Link } from "react-router-dom";
-import { Trash2, Plus } from "lucide-react";
-import { connectSocket, disconnectSocket, getSocket } from "../socket";
-import axiosInstance from "../api/axiosInstance";
-import CONFIG from "../constants/config";
-import LogsModal from "../components/LogsModal";
+import { Trash2, Plus, Edit2 } from "lucide-react";
 import FBAccountEditModal from "../components/FBAccountEditModal";
-
+import AutomatedMessageModal from "../components/AutomatedMessageModal";
 function FacebookAccounts() {
   const { accounts, loading, error } = useSelector((state) => state.fbAccounts);
   // console.log(accounts)
@@ -23,221 +19,38 @@ function FacebookAccounts() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
-  const [accountStatus, setAccountStatus] = useState({});
-  const [logsModalOpen, setLogsModalOpen] = useState(false);
-  const [logs, setLogs] = useState([]);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(null);
+  const [autoMsgModalOpen, setAutoMsgModalOpen] = useState(false);
+  const [selectedAutoMsgAccount, setSelectedAutoMsgAccount] = useState(null);
+  const openAutoMsgModal = (acc) => {
+    setSelectedAutoMsgAccount(acc);
+    setAutoMsgModalOpen(true);
+  };
 
-  // Track scrape status for each account
-  const [scrapeStatus, setScrapeStatus] = useState({});
-  const [socketInstance, setSocketInstance] = useState(null);
   const majorErrors = ['Cookies Expired', 'Proxy Expired']
-  // Handle login
-  // Handle login
-  const handleLogin = async (accountId) => {
-    setLogsModalOpen(true)
-    if (!socketInstance || !socketInstance.connected) {
-      const socket = connectSocket();
-      setSocketInstance(socket);
-    }
-    // console.log(`${CONFIG.BASE_URL}api/facebook/login/${accountId}`);
-    try {
-      setScrapeStatus((prev) => ({
-        ...prev,
-        [accountId]: "⏳ Logging in...",
-      }));
 
-      await axiosInstance.post(`${CONFIG.BASE_URL}/api/facebook/login/${accountId}`, {}, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      setScrapeStatus((prev) => ({
-        ...prev,
-        [accountId]: "📡 Login job enqueued...",
-      }));
-
-
-      console.log(scrapeStatus);
-    } catch (err) {
-      console.error(err);
-      setScrapeStatus((prev) => ({
-        ...prev,
-        [accountId]: "❌ Error starting login",
-      }));
-    }
-  };
-
-
-  // Start scraping handler
-  const handleScrape = async (accountId) => {
-    setLogsModalOpen(true)
-    if (!socketInstance || !socketInstance.connected) {
-      const socket = connectSocket();
-      setSocketInstance(socket);
-    }
-    try {
-      setScrapeStatus((prev) => ({
-        ...prev,
-        [accountId]: "⏳ Requesting scrape...",
-      }));
-
-      await axiosInstance.post(`${CONFIG.BASE_URL}/api/scrape/chats/${accountId}`);
-      //  setLogsModalOpen(false)
-
-      console.log(scrapeStatus);
-
-    } catch (err) {
-      setScrapeStatus((prev) => ({
-        ...prev,
-        [accountId]: "❌ Error starting scrape",
-      }));
-    }
-  };
 
   const handleEditClick = (account) => {
     setSelectedAccount(account);
     setEditModalOpen(true);
   };
 
+  const [openId, setOpenId] = useState(null);
+
   useEffect(() => {
     dispatch(fetchFBAccounts());
-  }, [dispatch]);
-
-
-  // useEffect(() => {
-  //   const addLog = (msg) =>
-  //     setLogs((prev) => [
-  //       ...prev,
-  //       { message: msg, timestamp: new Date().toLocaleTimeString() },
-  //     ]);
-
-  //   socket.on("scrape-started", ({ accountId }) => {
-  //     addLog(`Scraping started for account ${accountId}`);
-  //   });
-
-  //   socket.on("scrape-progress", ({ accountId, current, total, partner }) => {
-  //     addLog(`Scraping ${partner || "chat"} ( ${current}/${total}) for ${accountId}`);
-  //   });
-
-  //   socket.on("scrape-completed", ({ accountId }) => {
-  //     addLog(`Scraping completed for account ${accountId}`);
-  //     setLogsModalOpen(false)
-  //   });
-
-  //   socket.on("scrape-failed", ({ accountId, error }) => {
-  //     // alert('failed')
-  //     addLog(`Scraping failed for ${accountId}: ${error}`);
-  //   });
-
-  //   socket.on("login-started", ({ accountId }) => {
-  //     addLog(`Login started for account ${accountId}`);
-  //   });
-
-  //   // socket.on("login-completed", ({ accountId }) => {
-  //   //   dispatch(fetchFBAccounts());
-  //   //   addLog(`Login successful for account ${accountId}`);
-  //   //   setLogsModalOpen(false)
-  //   // });
-  //   socket.on("login-completed", ({ accountId }) => {
-  //     addLog(`Login successful for account ${accountId}`);
-  //     setScrapeStatus(prev => ({
-  //       ...prev,
-  //       [accountId]: "✅ Login successful",
-  //     }));
-  //     dispatch(fetchFBAccounts());
-  //     setLogsModalOpen(false);
-  //   });
-
-  //   socket.on("login-failed", ({ accountId, error }) => {
-  //     addLog(`❌ Failed to start login for ${accountId}: ${err.message}`);
-
-  //     // addLog(`Login failed for ${accountId}: ${error}`);
-  //   });
-
-  //   return () => {
-  //     socket.off("scrape-started");
-  //     socket.off("scrape-progress");
-  //     socket.off("scrape-completed");
-  //     socket.off("scrape-failed");
-  //     socket.off("login-started");
-  //     socket.off("login-completed");
-  //     socket.off("login-failed");
-  //   };
-  // }, [dispatch]);
-  useEffect(() => {
-    const socket = connectSocket();
-    setSocketInstance(socket);
-
-    const addLog = (msg) =>
-      setLogs((prev) => [
-        ...prev,
-        { message: msg, timestamp: new Date().toLocaleTimeString() },
-      ]);
-
-    // socket.on("scrape-started", ({ accountId }) => {
-    //   setLogs([]);
-    //   addLog(`Scraping started for account ${accountId}`);
-    // });
-    // socket.on("scrape-progress", ({ accountId, current, total, partner }) => {
-    //   addLog(`Scraping ${partner || "chat"} (${current}/${total}) for ${accountId}`);
-    // });
-    // socket.on("scrape-completed", ({ accountId }) => {
-    //   addLog(`Scraping completed for account ${accountId}`);
-    //   setLogsModalOpen(false);
-
-    //   disconnectSocket();
-    // });
-    // socket.on("scrape-failed", ({ accountId, error }) => {
-    //   addLog(`Scraping failed for ${accountId}: ${error}`);
-
-    //   disconnectSocket();
-    // });
-
-    // socket.on("login-started", ({ accountId }) => {
-    //   setLogs([]);
-    //   addLog(`Login started for account ${accountId}`);
-    // });
-    // socket.on("login-completed", ({ accountId }) => {
-    //   addLog(`Login successful for account ${accountId}`);
-    //   setScrapeStatus((prev) => ({
-    //     ...prev,
-    //     [accountId]: "✅ Login successful",
-    //   }));
-    //   dispatch(fetchFBAccounts());
-    //   setLogsModalOpen(false);
-
-    //   disconnectSocket();
-    // });
-    // socket.on("login-failed", ({ accountId, error }) => {
-    //   addLog(`❌ Failed to start login for ${accountId}: ${error}`);
-
-    //   disconnectSocket();
-    // });
-
-    return () => {
-      // socket.off("scrape-started");
-      // socket.off("scrape-progress");
-      // socket.off("scrape-completed");
-      // socket.off("scrape-failed");
-      // socket.off("login-started");
-      // socket.off("login-completed");
-      // socket.off("login-failed");
-
-      disconnectSocket();
-    };
   }, [dispatch]);
 
   return (
     <div className="p-6 text-gray-200 bg-gray-700">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-green-400">
+      <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center mb-6">
+        <h2 className="text-2xl font-bold text-green-400" >
           Facebook Accounts
         </h2>
-        <div className="flex gap-3">
+
+        <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={() => setShowUploadModal(true)}
             className="px-4 py-2 rounded bg-green-500 hover:bg-green-600 text-black"
@@ -260,108 +73,170 @@ function FacebookAccounts() {
         <p className="text-gray-400">No accounts connected yet.</p>
       )}
 
-      {/* Accounts List */}
-      <ul className="space-y-4">
+      {/* Accounts List */} 
+      <ul className="space-y-5">
         {accounts.map((acc) => (
           <li
             key={acc.id}
-            className="flex justify-between items-center bg-gray-900 border border-gray-800 p-4 rounded-xl shadow-md hover:shadow-lg transition-all"
+            className="bg-gray-900 border border-gray-800 rounded-xl p-4"
           >
-            <div>
-              <p className="font-semibold t ext-green-600">{acc.account_name || acc.email || acc.phone_number}</p>
-              <p className="font-semibold text-white"><span className="text-green-700">Proxy:</span> {acc.proxy_url || 'No Proxy'}</p>
-              <p className="font-semibold text-white"><span className="text-green-700">Proxy User:</span> {acc.proxy_user || 'No Proxy User'}</p>
-              <p className="font-semibold text-white"><span className="text-green-700">Proxy Port:</span> {acc.proxy_port || 'N/A'}</p>
-              <p className="font-semibold text-white"><span className="text-green-700">Login Status:</span>
-                <>
-                  {acc.login_status}
-                  {acc.login_status !== 'active' && (
-                    <span className="text-red-500"> {acc.last_error} </span>
-                  )}
-                </>
-              </p>
-            </div>
-            <button
-              onClick={() => handleEditClick(acc)}
-              className="flex items-center gap-2 bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-500 active:scale-95 transition-all"
-            >
-              Edit  {acc?.last_error && majorErrors.includes(acc?.last_error) ? `(${acc?.last_error})` : ''}
-            </button>
-
-            {acc.login_status == 'active' && (
-              <>
-                <Link to={`/fb/${acc.id}`} >
-                  <button
-                    className="flex items-center gap-2 bg-red-600 text-white px-3 py-2 rounded hover:bg-red-500 active:scale-95 transition-all"
-                  >
-                    View Chats
-                  </button>
-                </Link>
-              </>)
-            }
-            {/* <button
-                  onClick={() => handleScrape(acc.id)}
-                  className="flex items-center gap-2 bg-red-600 text-white px-3 py-2 rounded hover:bg-red-500 active:scale-95 transition-all"
-                >
-                  Scrape Chats
-                </button> */}
-
-            {/* </>
-            ) : (
-              <> */}
-            {/* <button
-                onClick={() => handleLogin(acc.id)}
-                className="flex items-center gap-2 bg-green-600 text-white px-3 py-2 rounded hover:bg-green-500 active:scale-95 transition-all"
+            {/* Header Row */}
+            <div className="relative">
+              <button
+                onClick={() => setOpenId(openId === acc.id ? null : acc.id)}
+                className="w-full flex items-center justify-between text-left"
               >
-                Connect
-              </button> */}
-            <button
-              onClick={async () => {
-                setDeletingId(acc.id);
-                dispatch(removeFBAccount(acc.id));
-                setDeletingId(null);
-              }}
-              disabled={deletingId === acc.id}
-              className={`flex items-center gap-2 px-3 py-2 rounded text-white active:scale-95 transition-all 
-    ${deletingId === acc.id
-                  ? "bg-gray-500 cursor-not-allowed"
-                  : "bg-red-600 hover:bg-red-500"
+                <p className="text-lg font-semibold text-green-400">
+                  {acc.account_name || acc.email || acc.phone_number}
+                </p>
+
+                {/* Mobile Arrow */}
+                <span
+                  className={`sm:hidden transition-transform duration-200 ${openId === acc.id ? "rotate-180" : ""
+                    }`}
+                >
+                  ▼
+                </span>
+              </button>
+
+              {/* Desktop / Tablet Edit */}
+              <button
+                onClick={() => handleEditClick(acc)}
+                className="
+              hidden sm:flex items-center gap-2
+              px-3 py-1.5
+              rounded-md
+              bg-gray-800
+              border border-gray-700
+              text-gray-200 text-sm
+              hover:bg-gray-700 hover:border-gray-600
+              transition-colors
+              absolute top-0 right-0
+            "
+              >
+                <Edit2 size={14} />
+                Edit
+                {acc?.last_error && majorErrors.includes(acc?.last_error)
+                  ? ` (${acc.last_error})`
+                  : ""}
+              </button>
+            </div>
+
+            {/* Details */}
+            <div
+              className={`mt-3 space-y-1 text-sm ${openId === acc.id ? "block" : "hidden sm:block"
                 }`}
             >
+              <p className="text-gray-300">
+                <span className="text-green-600">Proxy:</span>{" "}
+                {acc.proxy_url || "No Proxy"}
+              </p>
 
-              <Trash2 size={16} />
-              <span className="hidden sm:inline">
-                {deletingId === acc.id ? "Removing..." : "Remove"}
-              </span>
-            </button>
-            {/* </>
-            )} */}
+              <p className="text-gray-300">
+                <span className="text-green-600">User:</span>{" "}
+                {acc.proxy_user || "N/A"}
+              </p>
 
+              <p className="text-gray-300">
+                <span className="text-green-600">Port:</span>{" "}
+                {acc.proxy_port || "N/A"}
+              </p>
 
+              <p>
+                <span className="text-green-600">Status:</span>{" "}
+                <span
+                  className={
+                    acc.login_status === "active"
+                      ? "text-green-400"
+                      : "text-red-400"
+                  }
+                >
+                  {acc.login_status}
+                </span>
+                {acc.last_error && (
+                  <span className="text-red-500 ml-1">
+                    ({acc.last_error})
+                  </span>
+                )}
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div
+              className={`mt-4 ${openId === acc.id ? "block" : "hidden sm:block"
+                }`}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* Automated Message */}
+                <button
+                  onClick={() => openAutoMsgModal(acc)}
+                  className="bg-yellow-600 hover:bg-yellow-500 text-black py-2 rounded-lg font-medium"
+                >
+                  Automated Message
+                </button>
+
+                {/* Edit - Mobile Only */}
+                <button
+                  onClick={() => handleEditClick(acc)}
+                  className="sm:hidden bg-gray-800 hover:bg-gray-700 text-gray-200 py-2 rounded-lg font-medium flex items-center justify-center gap-2"
+                >
+                  <Edit2 size={16} />
+                  Edit
+                </button>
+
+                {/* View Chats */}
+                {acc.login_status === "active" && (
+                  <Link to={`/fb/${acc.id}`} className="w-full">
+                    <button className="w-full bg-indigo-700 hover:bg-indigo-600 text-indigo-100 py-2 rounded-lg font-medium flex items-center justify-center gap-2">
+                      {/* <Eye size={16} /> */}
+                      View Chats
+                    </button>
+                  </Link>
+                )}
+
+                {/* Remove */}
+                <button
+                  onClick={async () => {
+                    setDeletingId(acc.id);
+                    await dispatch(removeFBAccount(acc.id));
+                    setDeletingId(null);
+                  }}
+                  disabled={deletingId === acc.id}
+                  className={`py-2 rounded-lg font-medium flex items-center justify-center gap-2 ${deletingId === acc.id
+                    ? "bg-gray-600 cursor-not-allowed text-gray-300"
+                    : "bg-red-900 hover:bg-red-800 text-red-200"
+                    }`}
+                >
+                  <Trash2 size={16} />
+                  {deletingId === acc.id ? "Removing..." : "Remove"}
+                </button>
+              </div>
+            </div>
           </li>
         ))}
       </ul>
+
+      {/* Modals */}
       <FBAccountEditModal
         isOpen={editModalOpen}
         onClose={() => setEditModalOpen(false)}
         account={selectedAccount}
         token={token}
-        // data={data}
         onSuccess={() => dispatch(fetchFBAccounts())}
       />
 
-      {/* Modal */}
       {modalOpen && <FBAccountModal onClose={() => setModalOpen(false)} />}
       {showUploadModal && <FBUploadModal onClose={() => setShowUploadModal(false)} />}
-      <LogsModal
-        isOpen={logsModalOpen}
-        onClose={() => setLogsModalOpen(false)}
-        logs={logs}
-      />
 
+      <AutomatedMessageModal
+        isOpen={autoMsgModalOpen}
+        onClose={() => setAutoMsgModalOpen(false)}
+        account={selectedAutoMsgAccount}
+      />
     </div>
+
+
 
   );
 }
-
 export default FacebookAccounts;

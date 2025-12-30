@@ -10,7 +10,7 @@ function FBAccountModal({ onClose }) {
     accountName: "",
     email: "",
     phoneNumber: "",
-    password: "",
+    // password: "",
     proxyUrl: "",
     proxyPort: "",
     proxyUser: "",
@@ -75,7 +75,7 @@ function FBAccountModal({ onClose }) {
             onChange={handleChange}
             className="w-full bg-slate-900 text-gray-200 border border-slate-700 px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
           />
-          <div className="relative w-full">
+          {/* <div className="relative w-full">
             <input
               type={showPassword ? "text" : "password"}
               name="password"
@@ -154,7 +154,7 @@ function FBAccountModal({ onClose }) {
                 </svg>
               )}
             </div>
-          </div>
+          </div> */}
           <input
             type="text"
             name="proxyUrl"
@@ -243,7 +243,7 @@ function FBAccountModal({ onClose }) {
                 c-61.889,0-112.149-50.185-112.149-112.149 
                 s50.184-112.149,112.149-112.149
                 c61.965,0,112.148,50.26,112.148,112.149
-                S322.763,372.397,260.875,372.397z"
+                S322.763,372.397,260.875,372.397z"    
                     ></path>
                     <path d="M259.574,187.726c-39.321,0-71.222,32.053-71.222,71.451c0,39.397,31.901,71.451,71.222,71.451 
                 c39.321,0,71.222-32.054,71.222-71.451
@@ -292,5 +292,7 @@ function FBAccountModal({ onClose }) {
     </div>
   );
 }
+
+// const styles=
 
 export default FBAccountModal;

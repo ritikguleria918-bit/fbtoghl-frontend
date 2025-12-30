@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -7,229 +7,185 @@ import {
     fetchMessages,
     addMessage,
 } from "../redux/slices/chatsSlice";
-import { connectSocket, disconnectSocket, getSocket } from "../socket";
-import axiosInstance  from "../api/axiosInstance";
+import axiosInstance from "../api/axiosInstance";
 import CONFIG from "../constants/config";
-import LogsModal from "../components/LogsModal";
-import { useNavigate } from "react-router-dom";
+
 function FBChat() {
     const { id } = useParams(); // FB account id
-    const navigate = useNavigate();
     const dispatch = useDispatch();
     const { conversations, activeConversation, messages, loading, error } = useSelector((state) => state.chats);
-    const logout = () => dispatch(logout());
-    const { user, token } = useSelector((state) => state.auth);
-    const [logsModalOpen, setLogsModalOpen] = useState(false);
-    const [logs, setLogs] = useState([]);
-    const messagesEndRef = useRef(null);
-    const [scrapeStatus, setScrapeStatus] = useState({});
-    const [socketInstance, setSocketInstance] = useState(null);
-    const scrollToBottom = () => {
-        if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({
-                behavior: "smooth"
-            });
-        }
-    };
+    const { token } = useSelector((state) => state.auth);
+
     const [messageInput, setMessageInput] = useState("");
-    // Fetch conversations when entering page
+
+    // ==== BATCHING LOGIC ====
+    const buffer = useRef([]);         // holds unsent messages
+    const flushTimer = useRef(null);
+    const FLUSH_DELAY = 5000; // ms idle time before sending batch
+
+    const messagesEndRef = useRef(null);
+    const scrollToBottom = useCallback(() => {
+        if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+        }
+    }, []);
+
     useEffect(() => {
-        
-        dispatch(setActiveConversation(null)); // ⬅️ Reset on account change
+        dispatch(setActiveConversation(null));
         dispatch(fetchConversations(id));
     }, [id, dispatch]);
-    // When clicking on a conversation
-    const handleConversationClick = (conv) => {
-        dispatch(setActiveConversation(conv));
-        dispatch(fetchMessages(conv.id)); // fetch messages
-    };
-    const handleSend = async (e) => {
-        e.preventDefault();
-        if (!messageInput.trim()) return;
-        // For now: local add only
-        try {
-            let res = await axiosInstance .post(`${CONFIG.BASE_URL}/api/facebook/messages/send`, {
-                accountId: id,
-                chatUrl: activeConversation.chat_url || activeConversation.chatUrl, // use correct property
-                text: messageInput,
-            }, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                }
-            });
-            if (res.data.success || res.data.success == true) {
-                dispatch(
-                    addMessage({
-                        id: Date.now(),
-                        text: messageInput,
-                        sender: "You",
-                        timestamp: new Date().toISOString(),
-                    })
-                );
-                console.log("Message sent to backend successfully");
 
-            } else {
-                alert(res.data.error);
-                setTimeout(() => {
-                    navigate('/facebook-accounts')
-                }, 3000);
-            }
-
-        } catch (err) {
-            console.error("Error sending message to backend:", err);
-
-            // You can optionally update UI or show error feedback here
-        }
-
-    };
-    const handleScrape = async (accountId, chatUrl) => {
-        setLogsModalOpen(true)
-        if (!socketInstance || !socketInstance.connected) {
-            const socket = connectSocket();
-            setSocketInstance(socket);
-        }
-
-        try {
-            setScrapeStatus((prev) => ({
-                ...prev,
-                [accountId]: "⏳ Requesting scrape...",
-            }));
-
-            await axiosInstance .post(`${CONFIG.BASE_URL}/api/scrape/chats/single/${accountId}`, { chatUrl }, {
-                headers: {
-                    Authorization: `Bearer ${token}`
-                }
-            });
-            //  setLogsModalOpen(false)
-        } catch (err) {
-            setScrapeStatus((prev) => ({
-                ...prev,
-                [accountId]: "❌ Error starting scrape",
-            }));
-        }
-    };
-
-    // Connect socket when component mounts or when you start scraping/logging in
-    useEffect(() => {
-        const socket = connectSocket();
-        setSocketInstance(socket);
-
-        const addLog = (msg) =>
-            setLogs((prev) => [
-                ...prev,
-                { message: msg, timestamp: new Date().toLocaleTimeString() },
-            ]);
-
-        // socket.on("scrape-started", ({ accountId }) => {
-        //     setLogs([]);
-        //     addLog(`Scraping started for account ${accountId}`);
-        // });
-        // socket.on("scrape-progress", ({ accountId, current, total, partner }) => {
-        //     addLog(`Scraping ${partner || "chat"} (${current}/${total}) for ${accountId}`);
-        // });
-        // socket.on("scrape-completed", ({ accountId }) => {
-        //     addLog(`Scraping completed for account ${accountId}`);
-        //     setLogsModalOpen(false);
-        //     dispatch(fetchMessages(activeConversation.id)); // fetch messages
-
-        //     disconnectSocket(); // disconnect on completed
-        // });
-        // socket.on("scrape-failed", ({ accountId, error }) => {
-        //     addLog(`Scraping failed for ${accountId}: ${error}`);
-
-        //     disconnectSocket(); // disconnect on failed
-        // });
-
-        return () => {
-            // socket.off("scrape-started");
-            // socket.off("scrape-progress");
-            // socket.off("scrape-completed");
-            // socket.off("scrape-failed");
-            disconnectSocket(); // cleanup on unmount
-        };
-    }, [dispatch, activeConversation]);
     useEffect(() => {
         scrollToBottom();
-    }, [messages]);
+    }, [messages, scrollToBottom]);
+
+    // ======================
+    // BATCH FLUSH FUNCTION
+    // ======================
+    const flushBatch = async () => {
+        if (!activeConversation) return;
+        if (buffer.current.length === 0) return;
+
+        const batch = [...buffer.current];
+        buffer.current = []; // clear buffer
+
+        try {
+            const res = await axiosInstance.post(
+                `${CONFIG.BASE_URL}/api/facebook/messages/send`,
+                {
+                    accountId: id,
+                    chatUrl: activeConversation.chat_url || activeConversation.chatUrl,
+                    text: batch,                    // SEND ARRAY!!
+                    chatPartner: activeConversation.chat_partner,
+                },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+            if (!res.data.success) {
+                console.error("Batch failed:", res.data.error);
+            }
+        } catch (err) {
+            console.error("Batch send error:", err);
+        }
+    };
+
+    const scheduleFlush = () => {
+        if (flushTimer.current) clearTimeout(flushTimer.current);
+        flushTimer.current = setTimeout(flushBatch, FLUSH_DELAY);
+    };
+
+    // ======================
+    // SEND MESSAGE (BUFFERED)
+    // ======================
+    const handleSend = (e) => {
+        e.preventDefault();
+        if (!messageInput.trim() || !activeConversation) return;
+
+        const messageText = messageInput.trim();
+
+        const tempMessage = {
+            id: Date.now(),
+            text: messageText,
+            sender: "You",
+            timestamp: new Date().toISOString(),
+        };
+
+        dispatch(addMessage(tempMessage)); // Optimistic UI update
+
+        // Push into buffer
+        buffer.current.push({ body: messageText });
+
+        // Schedule a batch send
+        scheduleFlush();
+
+        setMessageInput("");
+    };
+
+    const renderConversations = () => {
+        if (loading) return <p className="p-3 text-gray-400">Loading...</p>;
+        if (error) return <p className="p-3 text-red-400">{error}</p>;
+        if (!conversations || conversations.length === 0) return <p className="p-3 text-gray-400">No conversations yet.</p>;
+
+        return conversations
+            .filter((c) => c?.id && c?.chat_partner)
+            .map((conv) => (
+                <div
+                    key={conv.id}
+                    onClick={() => {
+                        dispatch(setActiveConversation(conv));
+                        dispatch(fetchMessages(conv.id));
+                    }}
+                    className={`px-3 py-2 cursor-pointer hover:bg-gray-700 ${activeConversation?.id === conv.id ? "bg-gray-700" : ""
+                        }`}
+                >
+                    <p className="font-semibold">{conv.chat_partner}</p>
+                </div>
+            ));
+    };
+
+    const renderMessages = () => {
+        if (!activeConversation) return <p className="text-gray-400">Choose a conversation to view messages.</p>;
+        if (loading) return <p className="text-gray-400">Loading messages...</p>;
+        if (!messages || messages.length === 0) return <p className="text-gray-400">No messages yet.</p>;
+
+        return messages.map((msg) => (
+            <div key={msg.id} className={`flex ${msg.sender === "You" ? "justify-end" : "justify-start"}`}>
+                <div
+                    className={`px-3 py-2 rounded-lg max-w-xs break-words whitespace-pre-wrap ${msg.sender === "You" ? "bg-green-600 text-white" : "bg-gray-600 text-white"
+                        }`}
+                >
+                    <p>{msg.text}</p>
+                </div>
+            </div>
+        ));
+    };
+
     return (
-        <div className="flex h-full">
-            {/* Conversations Sidebar */}
-            <div className="w-64 bg-gray-900 text-white border-r border-gray-700 overflow-y-auto">
+        <div className="flex h-screen overflow-hidden">
+            {/* Sidebar */}
+            <div
+                className={`
+        bg-gray-900 text-white border-r border-gray-700
+        w-full sm:w-64
+        h-full overflow-y-auto
+        ${activeConversation ? "hidden sm:block" : "block"}
+      `}
+            >
                 <h3 className="p-3 font-bold border-b border-gray-700">
                     Conversations
                 </h3>
-
-                {loading && <p className="p-3 text-gray-400">Loading...</p>}
-                {error && <p className="p-3 text-red-400">{error}</p>}
-
-                {conversations.length > 0 ? (
-                    conversations
-                        .filter(
-                            (conv) =>
-                                conv && conv.id !== null && conv.id !== undefined && conv.chat_partner
-                        )
-                        .map((conv) => (
-                            <div
-                                key={conv.id}
-                                onClick={() => handleConversationClick(conv)}
-                                className={`px-3 py-2 cursor-pointer hover:bg-gray-700 ${activeConversation?.id === conv.id ? "bg-gray-700" : ""
-                                    }`}
-                            >
-                                <p className="font-semibold">{conv.chat_partner}</p>
-                            </div>
-                        ))
-                ) : (
-                    <p className="p-3 text-gray-400">No conversations yet.</p>
-                )}
-
+                {renderConversations()}
             </div>
 
             {/* Chat Window */}
-            <div className="flex-1 flex flex-col bg-gray-800">
+            <div
+                className={`
+                flex-1 flex flex-col bg-gray-800
+                h-full min-h-0
+                ${activeConversation ? "block" : "hidden sm:flex"}
+            `}
+            >
                 {/* Header */}
-                <div className="p-3 border-b border-gray-700 text-white font-bold">
-                    {activeConversation
-                        ? <> <span>{activeConversation.chat_partner}</span>
-                            {/* <button
-                            onClick={() => handleScrape(id, activeConversation.chat_url)}
-                            className="flex items-center gap-2 bg-red-600 text-white px-3 py-2 rounded hover:bg-red-500 active:scale-95 transition-all"
-                        >
-                            Scrape Chats
-                        </button>
-                         */}
-                        </>
-                        : "Select a conversation"}
+                <div className="p-3 border-b border-gray-700 text-white font-bold flex items-center gap-2">
+                    {/* Mobile back button */}
+                    <button
+                        onClick={() => dispatch(setActiveConversation(null))}
+                        className="sm:hidden bg-gray-700 px-2 py-1 rounded text-sm"
+                    >
+                        ← Back
+                    </button>
+
+                    <span>
+                        {activeConversation
+                            ? activeConversation.chat_partner
+                            : "Select a conversation"}
+                    </span>
                 </div>
 
                 {/* Messages */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-3 text-white"  >
-                    {!activeConversation ? (
-                        <p className="text-gray-400">Choose a conversation to view messages.</p>
-                    ) : loading ? (
-                        <p className="text-gray-400">Loading messages...</p>
-                    ) : messages.length === 0 ? (
-                        <p className="text-gray-400">No messages yet.</p>
-                    ) : (
-                        messages.map((msg) => (
-                            <div
-
-                                key={msg.id}
-                                className={`flex ${msg.sender === "You" ? "justify-end" : "justify-start"
-                                    }`}
-                            >
-                                <div
-                                    className={`px-3 py-2  break-words whitespace-pre-wrap rounded-lg max-w-xs ${msg.sender === "You"
-                                        ? "bg-green-600 text-white"
-                                        : "bg-gray-600 text-white"
-                                        }`}
-                                >
-                                    <p>{msg.text}</p>
-                                </div>
-                            </div>
-                        ))
-                    )}
+                <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 text-white">
+                    {renderMessages()}
                     <div ref={messagesEndRef} />
-
                 </div>
 
                 {/* Input */}
@@ -254,11 +210,6 @@ function FBChat() {
                     </form>
                 )}
             </div>
-            <LogsModal
-                isOpen={logsModalOpen}
-                onClose={() => setLogsModalOpen(false)}
-                logs={logs}
-            />
         </div>
     );
 }

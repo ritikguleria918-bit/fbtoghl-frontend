@@ -4,7 +4,7 @@ import { loginSuccess } from "../redux/slices/authSlice";
 import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import CONFIG from "../constants/config";
-
+import logo from "../assets/logo.png";
 function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -34,7 +34,7 @@ function Login() {
           })
         );
         localStorage.setItem(CONFIG.TOKEN_KEY, res.data.data.token);
-        navigate("/dashboard");
+        navigate(res.data.data.user.role === "admin" ? "/admin" : "/dashboard");
       } else {
         setError("Invalid server response. Please try again.");
       }
@@ -45,7 +45,7 @@ function Login() {
         setError("No response from server. Please check your connection.");
       } else {
         setError("An unexpected error occurred.");
-      }
+      } 
     } finally {
       setLoading(false);
     }
@@ -57,6 +57,7 @@ function Login() {
         onSubmit={handleSubmit}
         className="bg-gray-900 p-8 rounded-2xl shadow-lg w-96 border border-gray-700 text-gray-100"
       >
+        <img src={logo} alt="Logo" className="w-full mx-auto mb-6" />
         <h2 className="text-3xl font-extrabold mb-6 text-center text-green-400 tracking-tight">
           Login
         </h2>

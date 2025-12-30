@@ -46,6 +46,11 @@ const chatsSlice = createSlice({
     addMessage: (state, action) => {
       state.messages.push(action.payload);
     },
+    removeMessage: (state, action) => {
+      state.messages = state.messages.filter(
+        (msg) => msg.id !== action.payload
+      );
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -62,7 +67,7 @@ const chatsSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
       })
-       .addCase(fetchMessages.pending, (state) => {
+      .addCase(fetchMessages.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
@@ -74,8 +79,9 @@ const chatsSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
       });
+
   },
 });
 
-export const { setActiveConversation, setMessages, addMessage } = chatsSlice.actions;
+export const { setActiveConversation, setMessages, addMessage, removeMessage } = chatsSlice.actions;
 export default chatsSlice.reducer;

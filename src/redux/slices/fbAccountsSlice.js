@@ -15,6 +15,19 @@ export const fetchFBAccounts = createAsyncThunk(
   }
 );
 
+export const fetchAllFBAccounts = createAsyncThunk(
+  "fbAccounts/fetchFBAccounts",
+  async (_, { rejectWithValue }) => {
+    try {
+      const res = await axiosInstance.get("/api/facebook/accounts");
+      // console.log(res.data.accounts);
+      return res.data.accounts;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.error || "Failed to load accounts");
+    }
+  }
+);
+
 // Add account
 export const addFBAccount = createAsyncThunk(
   "fbAccounts/addFBAccount",
@@ -55,12 +68,39 @@ export const removeFBAccount = createAsyncThunk(
   }
 );
 
+
+// Fetch products for a specific FB account
+export const fetchProductsByFBAccount = createAsyncThunk(
+  "fbAccounts/fetchProductsByFBAccount",
+  async (accountId, { rejectWithValue }) => {
+    try {
+      const res = await axiosInstance.get(`/api/automated-message/${accountId}`);
+      return { accountId, products: res.data.products };
+    } catch (err) {
+      return rejectWithValue("Failed to load products");
+    }
+  }
+);
+
+// Update automated message
+export const updateAutomatedMessage = createAsyncThunk(
+  "fbAccounts/updateAutomatedMessage",
+  async ({ id, message }, { rejectWithValue }) => {
+    try {
+      const res = await axiosInstance.patch(`/api/automated-message/${id}`, { message });
+      return res.data;
+    } catch (err) {
+      return rejectWithValue("Failed to update automated message");
+    }
+  }
+);
 const fbAccountsSlice = createSlice({
   name: "fbAccounts",
   initialState: {
     accounts: [],
     loading: false,
     error: null,
+    productsByAccount: {},
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -103,6 +143,14 @@ const fbAccountsSlice = createSlice({
       })
       .addCase(uploadFBAccounts.rejected, (state, action) => {
         state.error = action.payload;
+      })
+      // automated messages
+      .addCase(fetchProductsByFBAccount.fulfilled, (state, action) => {
+        const { accountId, products } = action.payload;
+        state.productsByAccount[accountId] = products;
+      })
+      .addCase(updateAutomatedMessage.fulfilled, (state, action) => {
+        console.log("Message updated", action.payload);
       });
 
   },
