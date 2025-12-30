@@ -6,7 +6,7 @@ function App() {
     <div className="min-h-screen bg-gray-900">
       <AppRouter />
     </div>
-  );
+  ); 
 }
 
 export default App;
